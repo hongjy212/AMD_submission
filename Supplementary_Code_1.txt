@@ -1,0 +1,158 @@
+Supplementary Code 1. Colocalization analysis of NDUFB3 cis-eQTL
+and early AMD GWAS.
+
+This document describes the complete workflow for colocalization analysis
+between NDUFB3 cis-eQTL (GTEx v6p, Adipose_Subcutaneous and Whole_Blood)
+and early AMD GWAS (GCST010723). All steps are reproducible from public
+data resources.
+
+================================================================
+Step 1. Extract early AMD GWAS region (GRCh37)
+================================================================
+
+Source: ebi-a-GCST010723 (IAMDGC 2018, 14,034 cases / 91,214 controls)
+File: E:/retina_tools/pubdata/eQTL/gwas/ebi-a-GCST010723.vcf.gz
+Genome build: GRCh37
+
+R code (scripts/07_7f_coloc_NDUFB3.r):
+--------------------------------------------------------------
+library(data.table)
+
+gwas <- readRDS("E:/retina_tools/pubdata/eQTL/gwas/GCST010723_NDUFB3_region.rds")
+fwrite(as.data.table(gwas),
+       "E:/retina_tools/aging_rgc_axon/AMD/results/07_7f_coloc_NDUFB3/ndufb3_gwas_region.csv")
+--------------------------------------------------------------
+
+Output: 6,787 SNPs in NDUFB3 ±1 Mb region (GRCh37)
+Columns: snp, chr, pos, ref, alt, ES, SE, LP, AF, SS, NC, EZ, pval, z
+
+
+================================================================
+Step 2. Liftover GRCh37 → GRCh38
+================================================================
+
+Tool: Python liftover package (v1.5.0)
+Install: pip install liftover
+
+Python code (scripts/07_7f_coloc_NDUFB3.py):
+--------------------------------------------------------------
+import pandas as pd
+from liftover import get_lifter
+
+df = pd.read_csv("E:/retina_tools/aging_rgc_axon/AMD/results/07_7f_coloc_NDUFB3/ndufb3_gwas_region.csv")
+
+converter = get_lifter('hg19', 'hg38', one_based=True)
+
+hg38_pos = []
+for _, row in df.iterrows():
+    chrom = str(int(row['chr']))
+    pos = int(row['pos'])
+    result = converter[chrom][pos]
+    if result:
+        hg38_pos.append(result[0][1])
+    else:
+        hg38_pos.append(None)
+
+df['pos_hg38'] = hg38_pos
+df_hg38 = df.dropna(subset=['pos_hg38'])
+
+colstats = df_hg38[['chr', 'pos_hg38', 'ES', 'SE']].copy()
+colstats.columns = ['chrom', 'pos', 'beta', 'se']
+colstats.to_csv("E:/retina_tools/aging_rgc_axon/AMD/results/07_7f_coloc_NDUFB3/NDUFB3_earlyAMD_COLSTATS_hg38.tsv",
+                sep='\t', index=False)
+--------------------------------------------------------------
+
+Output: NDUFB3_earlyAMD_COLSTATS_hg38.tsv
+Columns: chrom, pos, beta, se (GRCh38)
+
+
+================================================================
+Step 3. Colocalization analysis (COLSTATS v2.3)
+================================================================
+
+Platform: COLSTATS v2.3 (https://colstats.irgb.cnr.it)
+Mode: Targeted
+
+Trait 1: early AMD (GCST010723) — uploaded file
+Trait 2: NDUFB3 cis-eQTL — from COLSTATS database
+  - Adipose_Subcutaneous: cs_4612_c (GTEx v6p, n = 581)
+  - Whole_Blood: cs_1067364_c (GTEx v6p, n = 670)
+
+Region: 2:201120000-203133000 (GRCh38, 2013 kb)
+Priors: p_h1 = 1e-4, p_h2 = 1e-4, p_h12 = 1e-5
+LD reference: 1000 Genomes Project phase 3, EUR
+
+Raw COLSTATS output: reproducibility/07_7f_coloc_NDUFB3/NDUFB3_colstats.txt
+Web-session screenshots: reproducibility/07_7f_coloc_NDUFB3/figure/
+
+
+================================================================
+Step 4. Results summary
+================================================================
+
+Analysis                  Adipose_Subcutaneous    Whole_Blood
+--------------------------------------------------------------
+Sample size               581                     670
+Region (GRCh38)           2:201120000-203133000   2:201120000-203133000
+T1 variants               3429                    3429
+T2 variants               2773                    2874
+Shared variants           2495                    2538
+
+PP.H0                     0.0168                  0.0384
+PP.H1                     0.3644                  0.8339
+PP.H2                     0.0042                  0.0048
+PP.H3                     0.0911                  0.1043
+PP.H4                     0.5235                  0.0185
+
+Top coloc variant (T1)    chr2_201135672_C_G      chr2_201135672_C_G
+Top coloc variant (T2)    chr2_201131954_CT_C     chr2_201690409_T_C
+r² between top variants   0.88                    0.00
+Direction concordant      Yes                     Yes
+
+Interpretation:
+- Adipose tissue: moderate colocalization signal (PP.H4 = 0.52)
+- Whole blood: no colocalization (PP.H4 = 0.02)
+- The two tissues are driven by distinct eQTL variants (r² = 0.00)
+- This tissue-specific regulatory architecture explains the
+  instrument-fragile nature of the blood-derived NDUFB3 MR estimate
+
+
+================================================================
+Step 5. Results table (R code for Supplementary Table)
+================================================================
+
+scripts/07_7f2_coloc_NDUFB3.r assembles the tidy table:
+
+library(data.table)
+
+coloc_results <- data.table(
+  analysis = c("NDUFB3_adipose_vs_earlyAMD", "NDUFB3_blood_vs_earlyAMD"),
+  tissue = c("Adipose_Subcutaneous", "Whole_Blood"),
+  n_samples = c(581, 670),
+  region = c("2:201120000-203133000", "2:201120000-203133000"),
+  n_variants_t1 = c(3429, 3429),
+  n_variants_t2 = c(2773, 2874),
+  n_shared = c(2495, 2538),
+  PP_H0 = c(0.0168, 0.0384),
+  PP_H1 = c(0.3644, 0.8339),
+  PP_H2 = c(0.0042, 0.0048),
+  PP_H3 = c(0.0911, 0.1043),
+  PP_H4 = c(0.5235, 0.0185),
+  top_variant_T1 = c("chr2_201135672_C_G", "chr2_201135672_C_G"),
+  top_variant_T2 = c("chr2_201131954_CT_C", "chr2_201690409_T_C"),
+  r2_top_variants = c(0.88, 0.00),
+  direction_concordant = c(TRUE, TRUE)
+)
+
+fwrite(coloc_results,
+       "E:/retina_tools/aging_rgc_axon/AMD/results/07_7f_coloc_NDUFB3/coloc_NDUFB3_both_tissues.csv")
+
+
+================================================================
+Data availability
+================================================================
+
+- early AMD GWAS: ebi-a-GCST010723 (GWAS Catalog)
+- GTEx v6p eQTL: COLSTATS database (PMID 29022597)
+- Analysis platform: COLSTATS v2.3 (https://colstats.irgb.cnr.it)
+- Code repository: see README.md and DATA_SOURCES.md
