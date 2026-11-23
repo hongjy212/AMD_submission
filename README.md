@@ -1,7 +1,6 @@
 # AMD multi-omics analysis — code repository
 
-Analysis code for the manuscript "Multi-scale causal inference identifies
-OXPHOS/NDUFB3 as a driver of age-related macular degeneration progression".
+Analysis code for the manuscript "Retinal Oxidative Phosphorylation Gene Expression Across Age-Related Macular Degeneration Grades and Genetic Prioritisation of NDUFB3 in Early Disease".
 
 ## Contents
 
